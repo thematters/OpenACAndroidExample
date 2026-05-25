@@ -16,13 +16,13 @@ An Android example app demonstrating zero-knowledge proof generation and verific
 
 ## Overview
 
-This app uses [OpenACKotlin](https://github.com/zkmopro/OpenACKotlin) to run the CertChain RS4096 + DeviceSig RS2048 ZK circuits on Android. The **zkID** tab exposes a scrollable screen with four cards that unlock sequentially:
+This app uses [OpenACKotlin](https://github.com/zkmopro/OpenACKotlin) to run the CertChain RS4096 + UserSig RS2048 ZK circuits on Android. The **zkID** tab exposes a scrollable screen with four cards that unlock sequentially:
 
 ### Circuit Download Card
 
 Always visible. Shows a live progress bar and percentage while fetching. The MOICA and ZK Pipeline cards are hidden until the circuit keys and SMT snapshot are ready.
 
-- **Download Circuit + Keys** — fetches and decompresses `cert_chain_rs4096_proving.key`, `device_sig_rs2048_proving.key`, and `g3-tree-snapshot.json.gz` from their CDNs; shows total download time on completion
+- **Download Circuit + Keys** — fetches and decompresses `cert_chain_rs4096_proving.key`, `user_sig_rs2048_proving.key`, and `g3-tree-snapshot.json.gz` from their CDNs; shows total download time on completion
 
 ### MOICA Signature Card _(visible after circuit + keys are ready)_
 
@@ -40,7 +40,7 @@ Expandable card showing the generated circuit input JSON, with a copy-to-clipboa
 ### ZK Pipeline Card _(visible after circuit + keys are ready)_
 
 - **4. Generate Input** — calls `generateCertChainRs4096Input` to produce the circuit input from the ATH result and SMT snapshot; enabled after ATH polling succeeds
-- **5. Generate Proof** — calls `proveCertChainRs4096` and `proveDeviceSigRs2048` and reports total proof time (ms)
+- **5. Generate Proof** — calls `proveCertChainRs4096` and `proveUserSigRs2048` and reports total proof time (ms)
 - **6. Verify Proof** — downloads verifying keys on demand, then POSTs the proof binaries to the link-verify server endpoint; enabled after prove succeeds
 - **Run All (Prove → Verify)** — convenience button that runs steps 5–6 in sequence (Generate Input must be run separately first)
 
@@ -90,4 +90,4 @@ The app requires an internet connection on first launch to download the circuit 
 
 ## Dependencies
 
-- [OpenACKotlin](https://github.com/zkmopro/OpenACKotlin) — Kotlin bindings for the mopro ZK proving backend (`generateCertChainRs4096Input`, `proveCertChainRs4096`, `proveDeviceSigRs2048`)
+- [OpenACKotlin](https://github.com/zkmopro/OpenACKotlin) — Kotlin bindings for the mopro ZK proving backend (`generateCertChainRs4096Input`, `proveCertChainRs4096`, `proveUserSigRs2048`)
