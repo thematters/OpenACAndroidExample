@@ -80,13 +80,13 @@ class MainActivity : ComponentActivity() {
 
             // Handle cold-start: app launched directly by the MOICA callback URL.
             LaunchedEffect(Unit) {
-                intent?.data?.let { vm.handleCallback(it) }
+                intent?.data?.let { vm.handleOpenUri(it) }
             }
 
             // Handle warm-start: activity already running (singleTop) when MOICA redirects back.
             DisposableEffect(vm) {
                 val listener = { newIntent: Intent ->
-                    newIntent.data?.let { vm.handleCallback(it) }
+                    newIntent.data?.let { vm.handleOpenUri(it) }
                     Unit
                 }
                 addOnNewIntentListener(listener)

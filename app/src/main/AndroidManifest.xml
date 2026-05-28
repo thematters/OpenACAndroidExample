@@ -33,6 +33,15 @@
                     android:scheme="openac"
                     android:host="callback" />
             </intent-filter>
+            <!-- Deep-link target for Matters proof handoff: openac://prove?payload=... -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="openac"
+                    android:host="prove" />
+            </intent-filter>
         </activity>
     </application>
 
