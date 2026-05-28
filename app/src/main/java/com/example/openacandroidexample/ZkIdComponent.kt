@@ -269,6 +269,14 @@ private fun MoicaCard(vm: ProofViewModel, isBusy: Boolean) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
+            if (vm.hasProofInput || vm.handoffStatus !is ProofViewModel.StepStatus.Idle) {
+                Text(
+                    text = "Matters handoff: ${vm.handoffSource ?: "openac://prove"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
             OutlinedTextField(
                 value                = vm.idNum,
                 onValueChange        = { vm.idNum = it },
@@ -307,7 +315,7 @@ private fun MoicaCard(vm: ProofViewModel, isBusy: Boolean) {
             StepButton(
                 label   = "3. Poll ATH Result",
                 status  = vm.athResultStatus,
-                enabled = !isBusy && vm.spTicket != null,
+                enabled = !isBusy && vm.spTicket != null && !vm.hasProofInput,
                 testTag = "fidoPollAthButton",
                 onClick = { vm.pollAthResult() },
             )
@@ -323,6 +331,7 @@ private fun MoicaResults(vm: ProofViewModel) {
         "TBS Challenge" to vm.tbsStatus,
         "SP Ticket"     to vm.spTicketStatus,
         "ATH Result"    to vm.athResultStatus,
+        "Handoff"       to vm.handoffStatus,
     )
     val hasAny = steps.any { (_, s) -> s !is ProofViewModel.StepStatus.Idle }
     AnimatedVisibility(visible = hasAny) {

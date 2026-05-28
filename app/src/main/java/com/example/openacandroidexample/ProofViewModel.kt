@@ -71,6 +71,8 @@ class ProofViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     var flowStep: FlowStep by mutableStateOf(FlowStep.Intro); private set
+    var handoffStatus: StepStatus by mutableStateOf(StepStatus.Idle); private set
+    var handoffSource: String? by mutableStateOf(null); private set
 
     // ── Pipeline step states ───────────────────────────────────────────────────
 
@@ -109,9 +111,20 @@ class ProofViewModel(application: Application) : AndroidViewModel(application) {
     var inputJson:           String?    by mutableStateOf(null);             private set
 
     private var identityCheckEpoch: Int = 0
+    private var certChainProvingKeyUrl = CERT_CHAIN_PROVING_KEY_URL
+    private var userSigProvingKeyUrl = USER_SIG_PROVING_KEY_URL
+    private var smtSnapshotUrl = SMT_SNAPSHOT_URL
+    private var linkVerifyUrl = LINK_VERIFY_URL
+    private var returnUrl: String? = null
 
     val isChallengeExpired: Boolean
         get() = challengeExpiresAt?.let { System.currentTimeMillis() > it.time } ?: false
+
+    val hasProofInput: Boolean
+        get() = !athIssuerCert.isNullOrEmpty()
+            && !athResponseString.isNullOrEmpty()
+            && tbs.isNotEmpty()
+            && challenge.isNotEmpty()
 
     val isValidIdNumber: Boolean
         get() {
@@ -196,6 +209,13 @@ class ProofViewModel(application: Application) : AndroidViewModel(application) {
         tbsStatus            = StepStatus.Idle
         rtnVal               = null
         challengeExpiresAt   = null
+        handoffStatus        = StepStatus.Idle
+        handoffSource        = null
+        returnUrl            = null
+        certChainProvingKeyUrl = CERT_CHAIN_PROVING_KEY_URL
+        userSigProvingKeyUrl = USER_SIG_PROVING_KEY_URL
+        smtSnapshotUrl       = SMT_SNAPSHOT_URL
+        linkVerifyUrl        = LINK_VERIFY_URL
         verificationStartTime    = null
         totalVerificationSeconds = null
         verifyMilliseconds       = null
@@ -248,9 +268,9 @@ class ProofViewModel(application: Application) : AndroidViewModel(application) {
                     val exists: Boolean, val decompress: Boolean,
                 )
                 val jobs = listOf(
-                    Job(CERT_CHAIN_PROVING_KEY_URL, CERT_CHAIN_PROVING_KEY_NAME, File(keysDir, CERT_CHAIN_PROVING_KEY_NAME), certKeyExists, true),
-                    Job(USER_SIG_PROVING_KEY_URL, USER_SIG_PROVING_KEY_NAME, File(keysDir, USER_SIG_PROVING_KEY_NAME), devKeyExists, true),
-                    Job(SMT_SNAPSHOT_URL, SMT_SNAPSHOT_NAME, File(workDir, SMT_SNAPSHOT_NAME), snapshotExists, false),
+                    Job(certChainProvingKeyUrl, CERT_CHAIN_PROVING_KEY_NAME, File(keysDir, CERT_CHAIN_PROVING_KEY_NAME), certKeyExists, true),
+                    Job(userSigProvingKeyUrl, USER_SIG_PROVING_KEY_NAME, File(keysDir, USER_SIG_PROVING_KEY_NAME), devKeyExists, true),
+                    Job(smtSnapshotUrl, SMT_SNAPSHOT_NAME, File(workDir, SMT_SNAPSHOT_NAME), snapshotExists, false),
                 )
                 val slice = 1.0 / jobs.size
                 for ((i, job) in jobs.withIndex()) {
@@ -441,11 +461,96 @@ class ProofViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun handleOpenUri(uri: Uri) {
+        if (uri.scheme == RETURN_SCHEME && uri.host == "prove") {
+            try {
+                applyHandoff(decodeHandoff(uri))
+            } catch (e: Exception) {
+                handoffStatus = StepStatus.Failure(e.message ?: "Invalid handoff")
+                flowStep = FlowStep.Failure(e.message ?: "Invalid handoff")
+            }
+            return
+        }
+        handleCallback(uri)
+    }
+
     fun handleCallback(uri: Uri) {
         if (uri.scheme != RETURN_SCHEME) return
         rtnVal   = uri.getQueryParameter("rtn_val")
         flowStep = FlowStep.Returned
         pollAthResult()
+    }
+
+    private data class HandoffPayload(
+        val source: String?,
+        val proofInput: ProofInput,
+        val linkVerifyUrl: String,
+        val certChainProvingKeyUrl: String?,
+        val userSigProvingKeyUrl: String?,
+        val smtSnapshotUrl: String?,
+        val returnUrl: String?,
+    )
+
+    private data class ProofInput(
+        val appId: String,
+        val challenge: String,
+        val challengeExpiresAt: String?,
+        val cert: String,
+        val signedResponse: String,
+    )
+
+    private fun decodeHandoff(uri: Uri): HandoffPayload {
+        val encoded = uri.getQueryParameter("payload")
+            ?: throw IllegalArgumentException("Missing handoff payload")
+        val jsonText = String(decodeBase64Url(encoded), Charsets.UTF_8)
+        val json = JSONObject(jsonText)
+        val version = json.optInt("version", 1)
+        require(version == 1) { "Unsupported handoff version: $version" }
+        val proof = json.optJSONObject("proofInput")
+            ?: throw IllegalArgumentException("Missing proofInput")
+        val appId = proof.requiredString("appId")
+        val challengeStr = proof.requiredString("challenge")
+        val cert = proof.requiredString("cert")
+        val signedResponse = proof.requiredString("signedResponse")
+        val linkVerify = json.requiredString("linkVerifyUrl")
+        URL(linkVerify)
+        return HandoffPayload(
+            source = json.optString("source").takeIf { it.isNotEmpty() },
+            proofInput = ProofInput(
+                appId = appId,
+                challenge = challengeStr,
+                challengeExpiresAt = proof.optString("challengeExpiresAt").takeIf { it.isNotEmpty() },
+                cert = cert,
+                signedResponse = signedResponse,
+            ),
+            linkVerifyUrl = linkVerify,
+            certChainProvingKeyUrl = json.optString("certChainProvingKeyUrl").takeIf { it.isNotEmpty() },
+            userSigProvingKeyUrl = json.optString("userSigProvingKeyUrl").takeIf { it.isNotEmpty() },
+            smtSnapshotUrl = json.optString("smtSnapshotUrl").takeIf { it.isNotEmpty() },
+            returnUrl = json.optString("returnUrl").takeIf { it.isNotEmpty() },
+        )
+    }
+
+    private fun applyHandoff(handoff: HandoffPayload) {
+        identityCheckEpoch++
+        spTicket = null
+        rtnVal = null
+        spTicketStatus = StepStatus.Idle
+        athIssuerCert = handoff.proofInput.cert
+        athResponseString = handoff.proofInput.signedResponse
+        tbs = handoff.proofInput.appId
+        challenge = handoff.proofInput.challenge
+        challengeExpiresAt = handoff.proofInput.challengeExpiresAt?.let { parseIso8601(it) }
+        linkVerifyUrl = handoff.linkVerifyUrl
+        handoff.certChainProvingKeyUrl?.let { certChainProvingKeyUrl = it }
+        handoff.userSigProvingKeyUrl?.let { userSigProvingKeyUrl = it }
+        handoff.smtSnapshotUrl?.let { smtSnapshotUrl = it }
+        returnUrl = handoff.returnUrl
+        handoffSource = handoff.source
+        tbsStatus = StepStatus.Success("handoff challenge received")
+        athResultStatus = StepStatus.Success("handoff proof input received")
+        handoffStatus = StepStatus.Success("handoff received")
+        flowStep = FlowStep.Returned
     }
 
     // ── Pipeline ───────────────────────────────────────────────────────────────
@@ -591,7 +696,7 @@ class ProofViewModel(application: Application) : AndroidViewModel(application) {
 
             val verifyStart = System.currentTimeMillis()
             val (responseCode, raw) = withContext(Dispatchers.IO) {
-                val conn = URL(LINK_VERIFY_URL).openConnection() as HttpURLConnection
+                val conn = URL(linkVerifyUrl).openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("ngrok-skip-browser-warning", "true")
@@ -636,5 +741,17 @@ class ProofViewModel(application: Application) : AndroidViewModel(application) {
                 SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).parse(normalized)
             } catch (_: Exception) { null }
         }
+    }
+
+    private fun JSONObject.requiredString(name: String): String {
+        return optString(name).takeIf { it.isNotEmpty() }
+            ?: throw IllegalArgumentException("Missing required handoff field: $name")
+    }
+
+    private fun decodeBase64Url(value: String): ByteArray {
+        var normalized = value.replace('-', '+').replace('_', '/')
+        val padding = (4 - normalized.length % 4) % 4
+        normalized += "=".repeat(padding)
+        return Base64.decode(normalized, Base64.DEFAULT)
     }
 }
