@@ -115,6 +115,7 @@ class ProofViewModel(application: Application) : AndroidViewModel(application) {
     private var userSigProvingKeyUrl = USER_SIG_PROVING_KEY_URL
     private var smtSnapshotUrl = SMT_SNAPSHOT_URL
     private var linkVerifyUrl = LINK_VERIFY_URL
+    private var handoffToken: String? = null
     private var returnUrl: String? = null
 
     val isChallengeExpired: Boolean
@@ -216,6 +217,7 @@ class ProofViewModel(application: Application) : AndroidViewModel(application) {
         userSigProvingKeyUrl = USER_SIG_PROVING_KEY_URL
         smtSnapshotUrl       = SMT_SNAPSHOT_URL
         linkVerifyUrl        = LINK_VERIFY_URL
+        handoffToken         = null
         verificationStartTime    = null
         totalVerificationSeconds = null
         verifyMilliseconds       = null
@@ -485,6 +487,7 @@ class ProofViewModel(application: Application) : AndroidViewModel(application) {
         val source: String?,
         val proofInput: ProofInput,
         val linkVerifyUrl: String,
+        val handoffToken: String?,
         val certChainProvingKeyUrl: String?,
         val userSigProvingKeyUrl: String?,
         val smtSnapshotUrl: String?,
@@ -524,6 +527,7 @@ class ProofViewModel(application: Application) : AndroidViewModel(application) {
                 signedResponse = signedResponse,
             ),
             linkVerifyUrl = linkVerify,
+            handoffToken = json.optString("handoffToken").takeIf { it.isNotEmpty() },
             certChainProvingKeyUrl = json.optString("certChainProvingKeyUrl").takeIf { it.isNotEmpty() },
             userSigProvingKeyUrl = json.optString("userSigProvingKeyUrl").takeIf { it.isNotEmpty() },
             smtSnapshotUrl = json.optString("smtSnapshotUrl").takeIf { it.isNotEmpty() },
@@ -542,6 +546,7 @@ class ProofViewModel(application: Application) : AndroidViewModel(application) {
         challenge = handoff.proofInput.challenge
         challengeExpiresAt = handoff.proofInput.challengeExpiresAt?.let { parseIso8601(it) }
         linkVerifyUrl = handoff.linkVerifyUrl
+        handoffToken = handoff.handoffToken
         handoff.certChainProvingKeyUrl?.let { certChainProvingKeyUrl = it }
         handoff.userSigProvingKeyUrl?.let { userSigProvingKeyUrl = it }
         handoff.smtSnapshotUrl?.let { smtSnapshotUrl = it }
@@ -704,6 +709,7 @@ class ProofViewModel(application: Application) : AndroidViewModel(application) {
                 val body = JSONObject().apply {
                     put("cert_chain_type",  "rs4096")
                     put("cert_chain_proof", Base64.encodeToString(ccProof, Base64.NO_WRAP))
+                    handoffToken?.let { put("handoff_token", it) }
                     put("user_sig_proof", Base64.encodeToString(dsProof, Base64.NO_WRAP))
                 }
                 conn.outputStream.use { it.write(body.toString().toByteArray()) }
